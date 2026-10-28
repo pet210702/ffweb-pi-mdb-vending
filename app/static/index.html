@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FF Getränkeautomat — G-Drink DM9 &amp; FFWEB</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-alt: #273549;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --red: #dc2626;
+      --red-hover: #b91c1c;
+      --green: #16a34a;
+      --amber: #d97706;
+      --blue: #2563eb;
+      --lcd-bg: #052e16;
+      --lcd-fg: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      background: linear-gradient(90deg, #991b1b 0%, #1e293b 65%);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+    .pill {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.ok { background: #22c55e; }
+    .dot.warn { background: #f59e0b; }
+    .dot.err { background: #ef4444; }
+
+    main {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 18px;
+    }
+    @media (max-width: 1024px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .full-width { grid-column: 1 / -1; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .card h2 {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .subtext {
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin-bottom: 12px;
+    }
+
+    /* Unknown chip alert banner */
+    #unknownChipBanner {
+      display: none;
+      background: rgba(217, 119, 6, 0.18);
+      border: 1px solid #f59e0b;
+      border-radius: 10px;
+      padding: 12px 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* Virtual DM9 LCD */
+    .lcd {
+      background: var(--lcd-bg);
+      border: 2px solid #14532d;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      color: var(--lcd-fg);
+      margin-bottom: 14px;
+    }
+    .lcd-main {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .lcd-meta {
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: #86efac;
+      opacity: 0.85;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--panel-alt);
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover:not(:disabled) {
+      background: #334155;
+      border-color: #64748b;
+    }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button.primary { background: var(--blue); border-color: #3b82f6; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    button.success { background: var(--green); border-color: #22c55e; }
+    button.success:hover:not(:disabled) { background: #15803d; }
+    button.danger { background: var(--red); border-color: #ef4444; }
+    button.danger:hover:not(:disabled) { background: var(--red-hover); }
+    button.amber { background: var(--amber); border-color: #f59e0b; }
+
+    .slot-btn {
+      text-align: left;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .slot-btn .slot-num {
+      font-size: 0.75rem;
+      color: #93c5fd;
+      font-weight: 700;
+    }
+    .slot-btn .slot-price {
+      font-size: 0.8rem;
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .dispense-box {
+      border: 1px dashed #64748b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 10px;
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .dispense-box.active {
+      border: 2px solid #22c55e;
+      background: rgba(22, 163, 74, 0.14);
+    }
+
+    .member-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .member-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      flex-wrap: wrap;
+    }
+
+    input, select {
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 0.86rem;
+    }
+    .inline-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 600;
+    }
+    .badge.ok { background: rgba(22, 163, 74, 0.22); color: #4ade80; }
+    .badge.warn { background: rgba(217, 119, 6, 0.25); color: #fbbf24; }
+    .badge.err { background: rgba(220, 38, 38, 0.22); color: #f87171; }
+    .badge.neutral { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; }
+    code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.82rem;
+      background: rgba(15, 23, 42, 0.7);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🚒 FF Getränkeautomat — SandenVendo G-Drink DM9 &amp; FFWEB</h1>
+    <div class="status-pills">
+      <span class="pill"><span id="sseDot" class="dot"></span> Live-Stream</span>
+      <span class="pill">Status: <strong id="ctrlState">IDLE</strong></span>
+      <span class="pill">MDB: <strong id="mdbStatus">-</strong></span>
+      <span class="pill">RFID: <strong id="rfidStatus">-</strong></span>
+      <span class="pill">OLED: <strong id="oledStatus">-</strong></span>
+      <button onclick="triggerOledDiag()" style="padding:3px 10px; font-size:0.78rem; border-radius:999px;">📟 Diagnose am OLED</button>
+      <span class="pill">FFWEB: <strong id="ffwebStatus">-</strong></span>
+      <span class="pill">Sync-Queue: <strong id="pendingSyncCount">0</strong></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Unknown scanned RFID chip helper banner -->
+    <div id="unknownChipBanner" class="full-width">
+      <div>
+        <strong>Neuer / unbekannter Feuerwehr-Chip erkannt:</strong>
+        <code id="unknownChipUid">-</code>
+        <span class="subtext" style="margin-left:8px;">(Diese UID in FFWEB beim Mitglied hinterlegen oder unten als Test-Mitglied anlegen)</span>
+      </div>
+      <div class="inline-form">
+        <button onclick="copyUnknownUid()">UID kopieren</button>
+        <button class="amber" id="quickRegisterBtn" onclick="quickRegisterUnknownChip()">Als Test-Mitglied anlegen (15,00 €)</button>
+      </div>
+    </div>
+
+    <!-- Left Column: Virtual G-Drink DM9 Simulator -->
+    <section class="card">
+      <h2>
+        <span>🥤 G-Drink DM9 Steuerung &amp; Simulator</span>
+        <button onclick="cancelSession()" title="Sitzung / Auswahl abbrechen">Abbruch (C,STOP)</button>
+      </h2>
+      <div class="subtext">
+        Ablauf: <strong>1. Chip scannen</strong> (zeigt Guthaben am DM9-Display) → <strong>2. Getränk wählen</strong> → <strong>3. Lichtschranke bestätigen</strong>.
+      </div>
+
+      <div class="lcd">
+        <div class="lcd-main" id="dm9Display">INITIALISIERE...</div>
+        <div class="lcd-meta">
+          <span>Aktives Mitglied: <strong id="activeMemberLabel">—</strong></span>
+          <span>MDB TX: <span id="mdbLastTx">-</span> | RX: <span id="mdbLastRx">-</span></span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:8px; font-size:0.85rem; font-weight:600;">Getränke-Wahltasten am G-Drink DM9:</div>
+      <div class="slot-grid" id="simSlotGrid"></div>
+
+      <div id="dispenseBox" class="dispense-box">
+        <div style="font-weight:600; font-size:0.88rem; margin-bottom:8px;">
+          Ausgabelift / Lichtschranke (erst bei <code>c,VEND,SUCCESS</code> wird abgebucht!):
+        </div>
+        <div class="inline-form">
+          <button id="btnDispenseOk" class="success" onclick="simDispense(true)" disabled>
+            ✅ Flasche ausgegeben (VEND SUCCESS)
+          </button>
+          <button id="btnDispenseFail" class="danger" onclick="simDispense(false)" disabled>
+            ⚠️ Flasche klemmt (ERR VEND 3 — 0,00 €)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: 0.96" OLED Display & 3 Hardware Push-Buttons -->
+    <section class="card">
+      <h2>
+        <span>📟 0.96" OLED Display &amp; 3 Bedientasten</span>
+        <button onclick="triggerOledDiag()">Diagnose am OLED</button>
+      </h2>
+      <div class="subtext">
+        Physische Taster am Pi (GPIO 17, 27, 22). Bei aktiver Verrechnungsliste wählt der Kamerad hier:
+      </div>
+
+      <!-- Visual OLED replica box -->
+      <div id="oledBox" style="background:#000; border:2px solid #38bdf8; border-radius:8px; padding:10px 14px; font-family:'SFMono-Regular', Consolas, monospace; color:#38bdf8; min-height:92px; margin-bottom:14px; box-shadow:0 0 12px rgba(56, 189, 248, 0.25);">
+        <div id="oledHeader" style="background:#38bdf8; color:#000; font-weight:bold; font-size:0.82rem; text-align:center; padding:3px 6px; margin-bottom:8px; border-radius:3px; letter-spacing:0.5px;">
+          FF GETRÄNKEAUTOMAT
+        </div>
+        <div id="oledLine1" style="font-size:0.95rem; margin-bottom:4px; color:#f8fafc;">
+          Bereit
+        </div>
+        <div id="oledLine2" style="font-size:1.15rem; font-weight:bold; color:#38bdf8;">
+          Chip vorhalten
+        </div>
+        <div id="oledFooter" style="display:none; border-top:1px dashed #38bdf8; margin-top:8px; padding-top:4px; font-size:0.75rem; color:#94a3b8; text-align:center;">
+          [&lt; Zurück] &nbsp; [OK] &nbsp; [Weiter &gt;]
+        </div>
+      </div>
+
+      <!-- 3 Buttons Simulation Controls -->
+      <div style="font-size:0.84rem; font-weight:600; margin-bottom:8px;">Physische Tasten (auch per Klick bedienbar):</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px;">
+        <button onclick="pressButton('back')" class="danger" style="display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 6px;">
+          <span style="font-size:1.15rem;">◄</span>
+          <strong>Zurück / Abbr.</strong>
+          <span style="font-size:0.7rem; opacity:0.8;">GPIO 17 (Pin 11)</span>
+        </button>
+        <button onclick="pressButton('select')" class="success" style="display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 6px;">
+          <span style="font-size:1.15rem;">●</span>
+          <strong>Auswahl / OK</strong>
+          <span style="font-size:0.7rem; opacity:0.8;">GPIO 27 (Pin 13)</span>
+        </button>
+        <button onclick="pressButton('next')" class="primary" style="display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 6px;">
+          <span style="font-size:1.15rem;">►</span>
+          <strong>Weiter</strong>
+          <span style="font-size:0.7rem; opacity:0.8;">GPIO 22 (Pin 15)</span>
+        </button>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <button onclick="pressButton('combo_1_3')" style="width:100%; background:linear-gradient(90deg, #991b1b 0%, #1e40af 100%); border:1px solid #3b82f6; padding:8px 12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px; border-radius:7px;">
+          <span>🛠️ Tasten 1 + 3 gleichzeitig:</span>
+          <strong>Debug-Menü aufrufen (10s)</strong>
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--border); padding-top:12px;">
+        <div style="font-weight:600; font-size:0.86rem; margin-bottom:8px;">Beliebigen Feuerwehr-Chip testen:</div>
+        <div class="inline-form">
+          <input type="text" id="customChipInput" placeholder="Chip-UID (z.B. 0001234567)" style="flex:1;" />
+          <button class="primary" onclick="scanCustomChip()">🪪 Scannen</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Verrechnungslisten & Anlässe (bld.ffweb.at/kuelia) -->
+    <section class="card full-width">
+      <h2>
+        <span>🚒 Verrechnungslisten &amp; Anlässe (bld.ffweb.at/kuelia)</span>
+        <button class="primary" onclick="toggleNewListForm()">+ Neue Liste anlegen</button>
+      </h2>
+      <div class="subtext">
+        Nach Einsätzen, Übungen oder Besprechungen kann hier die Abrechnung aktiviert werden. Ist eine Liste aktiv, fragt das OLED-Display nach dem Chip-Scan, ob <strong>Privat</strong> bezahlt wird oder als <strong>Freigetränk auf die Liste</strong> gebucht wird.
+      </div>
+
+      <div id="newListForm" style="display:none; background:rgba(15,23,42,0.65); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
+        <div style="font-weight:600; font-size:0.86rem; margin-bottom:8px;">Neue Verrechnungsliste erstellen:</div>
+        <div class="inline-form">
+          <input type="text" id="newListId" placeholder="Listen-ID (z.B. LIST-UEBUNG)" style="width:170px;" />
+          <input type="text" id="newListName" placeholder="Name (z.B. Monatsübung Brand)" style="flex:1; min-width:180px;" />
+          <input type="text" id="newListNotes" placeholder="Notiz / Anlass" style="flex:1; min-width:180px;" />
+          <button class="success" onclick="createEventList()">Erstellen &amp; Aktivieren</button>
+          <button onclick="toggleNewListForm()">Abbrechen</button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Listen-Name</th>
+              <th>Listen-ID</th>
+              <th>Getränke</th>
+              <th>Stationskosten</th>
+              <th>Notiz</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="eventListsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Right Column: RFID Reader & FFWEB Test Accounts -->
+    <section class="card">
+      <h2>
+        <span>🪪 Feuerwehr-Chips (USB RFID &amp; FFWEB)</span>
+        <button id="btnToggleOutage" onclick="toggleOutage()">FFWEB Offline testen</button>
+      </h2>
+      <div class="subtext">
+        Halte einen echten Chip an den USB-Leser am Raspberry Pi oder klicke zum Testen auf ein Mitglied:
+      </div>
+
+      <div class="inline-form" style="margin-bottom:14px;">
+        <input type="text" id="customChipInput" placeholder="Beliebige Chip-UID scannen..." style="flex:1;" />
+        <button class="primary" onclick="scanCustomChip()">Chip-Scan simulieren</button>
+      </div>
+
+      <div id="mockMembersSection">
+        <div class="member-list" id="memberList"></div>
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-size:0.86rem; color:var(--muted);">+ Test-Mitglied / Chip hinzufügen (Mock-FFWEB)</summary>
+          <div class="inline-form" style="margin-top:10px;">
+            <input type="text" id="newMemberId" placeholder="ID (z.B. FF-104)" style="width:120px;" />
+            <input type="text" id="newMemberUid" placeholder="Chip-UID" style="width:140px;" />
+            <input type="text" id="newMemberName" placeholder="Name" style="flex:1; min-width:140px;" />
+            <input type="number" step="0.50" id="newMemberBal" placeholder="Guthaben €" value="20.00" style="width:110px;" />
+            <button class="primary" onclick="saveMockMember()">Speichern</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Slot Mapping Management -->
+    <section class="card full-width">
+      <h2>⚙️ G-Drink DM9 Schacht-Zuordnung (MDB Slot → FFWEB Getränk)</h2>
+      <div class="inline-form" style="margin-bottom:12px;">
+        <input type="number" id="slotNumInput" placeholder="DM9 Slot (z.B. 11)" style="width:150px;" />
+        <input type="text" id="slotProdInput" placeholder="FFWEB Produkt-ID (z.B. FF-COLA-05)" style="width:230px;" />
+        <input type="text" id="slotNameInput" placeholder="Getränkename (z.B. Coca-Cola 0,5L)" style="flex:1; min-width:180px;" />
+        <input type="number" step="0.10" id="slotPriceInput" placeholder="Preis €" value="1.50" style="width:110px;" />
+        <button class="primary" onclick="saveSlot()">Slot speichern / aktualisieren</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>DM9 Slot</th>
+              <th>Getränk</th>
+              <th>FFWEB Produkt-ID</th>
+              <th>Preis</th>
+              <th>Status</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody id="slotsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Transactions & Audit Log -->
+    <section class="card full-width">
+      <h2>
+        <span>📋 Buchungsprotokoll &amp; FFWEB Sync-Queue</span>
+        <button onclick="retrySync()">🔄 Ausstehende Syncs jetzt senden</button>
+      </h2>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Zeitpunkt (UTC)</th>
+              <th>Mitglied</th>
+              <th>Chip-UID</th>
+              <th>Slot / Getränk</th>
+              <th>Abrechnung</th>
+              <th>Betrag</th>
+              <th>Automaten-Status</th>
+              <th>FFWEB-Sync</th>
+            </tr>
+          </thead>
+          <tbody id="txTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentOutage = false;
+    let lastUnknownUid = "";
+    let refreshTimer = null;
+    let isRefreshing = false;
+    let pendingRefresh = false;
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail || "API Fehler");
+        throw new Error(data.detail || "API error");
+      }
+      return data;
+    }
+
+    function refreshAll() {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(_doRefreshAll, 80);
+    }
+
+    async function _doRefreshAll() {
+      refreshTimer = null;
+      if (isRefreshing) {
+        pendingRefresh = true;
+        return;
+      }
+      isRefreshing = true;
+      try {
+        const [statusData, slotsData, txData, membersData, eventListsData] = await Promise.all([
+          api("/api/status"),
+          api("/api/slots"),
+          api("/api/transactions?limit=30"),
+          api("/api/mock-ffweb/members"),
+          api("/api/event-lists"),
+        ]);
+        renderStatus(statusData);
+        renderSlots(slotsData.slots, statusData);
+        renderTransactions(txData.transactions);
+        renderMembers(membersData);
+        renderEventLists(eventListsData.event_lists || []);
+      } finally {
+        isRefreshing = false;
+        if (pendingRefresh) {
+          pendingRefresh = false;
+          refreshAll();
+        }
+      }
+    }
+
+    function renderStatus(data) {
+      const ctrl = data.controller;
+      const mdb = data.mdb;
+      const rfid = data.rfid;
+      const ffweb = data.ffweb;
+
+      document.getElementById("ctrlState").textContent = ctrl.state;
+      document.getElementById("mdbStatus").textContent =
+        mdb.mode === "simulator" ? "Simulator" : (mdb.connected ? `Qibixx (${mdb.port})` : "Getrennt");
+      document.getElementById("rfidStatus").textContent =
+        rfid.hardware_connected
+          ? `USB (${rfid.active_device_name || "aktiv"})`
+          : (rfid.mode !== "simulator" && rfid.evdev_supported
+              ? "⚠️ Getrennt (USB prüfen!)"
+              : (rfid.last_scanned_uid ? `Simulator (Letzte: ${rfid.last_scanned_uid})` : "Simulator"));
+
+      const oled = data.oled || {};
+      document.getElementById("oledStatus").textContent =
+        oled.connected
+          ? `${oled.driver} (${oled.screen ? oled.screen.line2 : "aktiv"})`
+          : "Nicht verbunden";
+
+      // Render OLED visual replica box
+      const oledScreen = oled.screen || {};
+      const menu = oledScreen.menu;
+      if (menu) {
+        document.getElementById("oledHeader").textContent = menu.header || "ABRECHNUNG WÄHLEN";
+        document.getElementById("oledLine1").textContent = menu.option || "";
+        document.getElementById("oledLine2").textContent = menu.subtitle || "";
+        document.getElementById("oledFooter").style.display = "block";
+        document.getElementById("oledFooter").textContent = menu.footer || "[< Zurück]  [OK]  [Weiter >]";
+      } else {
+        document.getElementById("oledHeader").textContent = oledScreen.header || "FF GETRÄNKEAUTOMAT";
+        document.getElementById("oledLine1").textContent = oledScreen.line1 || "Bereit";
+        document.getElementById("oledLine2").textContent = oledScreen.line2 || "Chip vorhalten";
+        document.getElementById("oledFooter").style.display = "none";
+      }
+
+      currentOutage = !!ffweb.simulate_outage;
+      document.getElementById("ffwebStatus").textContent =
+        ffweb.mode === "mock"
+          ? (currentOutage ? "MOCK OFFLINE" : "Mock-Modus")
+          : `Live (${ffweb.base_url})`;
+
+      const btnOutage = document.getElementById("btnToggleOutage");
+      btnOutage.textContent = currentOutage ? "🟢 FFWEB wieder online schalten" : "⚡ FFWEB Offline testen";
+      btnOutage.className = currentOutage ? "amber" : "";
+
+      document.getElementById("pendingSyncCount").textContent = ctrl.pending_sync_count;
+
+      // Virtual LCD
+      const lcdText = mdb.dm9_display || `STATUS: ${ctrl.state}`;
+      document.getElementById("dm9Display").textContent = lcdText;
+      document.getElementById("activeMemberLabel").textContent =
+        ctrl.active_member
+          ? `${ctrl.active_member.name} (${ctrl.active_member.balance_eur} €)`
+          : (ctrl.pending_selection ? `Warte auf Chip für ${ctrl.pending_selection.drink_name}` : "—");
+      document.getElementById("mdbLastTx").textContent = mdb.last_tx || "-";
+      document.getElementById("mdbLastRx").textContent = mdb.last_rx || "-";
+
+      // Dispense buttons active only when DISPENSING
+      const dispensing = ctrl.state === "DISPENSING";
+      document.getElementById("btnDispenseOk").disabled = !dispensing;
+      document.getElementById("btnDispenseFail").disabled = !dispensing;
+      document.getElementById("dispenseBox").className = dispensing ? "dispense-box active" : "dispense-box";
+
+      // Unknown chip banner
+      const banner = document.getElementById("unknownChipBanner");
+      if (ctrl.last_unknown_chip && ctrl.last_unknown_chip.chip_uid) {
+        lastUnknownUid = ctrl.last_unknown_chip.chip_uid;
+        document.getElementById("unknownChipUid").textContent = lastUnknownUid;
+        banner.style.display = "flex";
+      } else {
+        banner.style.display = "none";
+      }
+    }
+
+    function renderSlots(slots, statusData) {
+      const simGrid = document.getElementById("simSlotGrid");
+      simGrid.innerHTML = "";
+      for (const s of slots) {
+        if (!s.active) continue;
+        const btn = document.createElement("button");
+        btn.className = "slot-btn";
+        btn.onclick = () => simSelectSlot(s.slot_number, s.price_cents);
+        btn.innerHTML = `
+          <span class="slot-num">SLOT ${s.slot_number}</span>
+          <span>${escapeHtml(s.drink_name)}</span>
+          <span class="slot-price">${s.price_eur} €</span>
+        `;
+        simGrid.appendChild(btn);
+      }
+      // Also include unmapped slot 99 test button
+      const unmappedBtn = document.createElement("button");
+      unmappedBtn.className = "slot-btn";
+      unmappedBtn.onclick = () => simSelectSlot(99, 150);
+      unmappedBtn.innerHTML = `
+        <span class="slot-num" style="color:#f87171;">SLOT 99 (Test)</span>
+        <span>Unbekannter Schacht</span>
+        <span class="slot-price" style="color:#94a3b8;">1.50 €</span>
+      `;
+      simGrid.appendChild(unmappedBtn);
+
+      const tbody = document.getElementById("slotsTableBody");
+      tbody.innerHTML = slots.map(s => `
+        <tr>
+          <td><strong>${s.slot_number}</strong></td>
+          <td>${escapeHtml(s.drink_name)}</td>
+          <td><code>${escapeHtml(s.ffweb_product_id)}</code></td>
+          <td>${s.price_eur} €</td>
+          <td><span class="badge ${s.active ? 'ok' : 'neutral'}">${s.active ? 'Aktiv' : 'Inaktiv'}</span></td>
+          <td>
+            <button onclick="prefillSlot(${s.slot_number}, '${escapeJs(s.ffweb_product_id)}', '${escapeJs(s.drink_name)}', '${s.price_eur}')">Bearbeiten</button>
+            <button class="danger" onclick="deleteSlot(${s.slot_number})">Löschen</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderMembers(data) {
+      const container = document.getElementById("memberList");
+      if (!data.mock_active) {
+        container.innerHTML = `<div class="subtext">Live-FFWEB Modus aktiv — Mitglieder werden direkt von ffweb.at geladen.</div>`;
+        return;
+      }
+      container.innerHTML = data.members.map(m => `
+        <div class="member-row">
+          <div>
+            <strong>${escapeHtml(m.name)}</strong>
+            <div style="font-size:0.78rem; color:var(--muted);">
+              ID: <code>${escapeHtml(m.member_id)}</code> · Chip: <code>${escapeHtml(m.chip_uid)}</code>
+            </div>
+          </div>
+          <div class="inline-form">
+            <strong style="color:${m.balance_cents > 0 ? '#4ade80' : '#f87171'}; min-width:68px; text-align:right;">
+              ${m.balance_eur} €
+            </strong>
+            <button onclick="topupMember('${escapeJs(m.member_id)}', '5.00')" title="+5,00 € aufladen">+5 €</button>
+            <button class="primary" onclick="scanChip('${escapeJs(m.chip_uid)}')">🪪 Scannen</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderEventLists(lists) {
+      const tbody = document.getElementById("eventListsTableBody");
+      if (!lists.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--muted);">Keine Verrechnungslisten angelegt.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = lists.map(l => `
+        <tr>
+          <td><span class="badge ${l.active ? 'ok' : 'neutral'}">${l.active ? '● Aktiv (auf OLED)' : '○ Geschlossen'}</span></td>
+          <td><strong>${escapeHtml(l.name)}</strong></td>
+          <td><code>${escapeHtml(l.list_id)}</code></td>
+          <td><strong>${l.consumption_count}</strong> Flaschen</td>
+          <td style="color:#4ade80;"><strong>${l.total_cost_eur} €</strong></td>
+          <td style="color:var(--muted); font-size:0.8rem;">${escapeHtml(l.notes || '—')}</td>
+          <td>
+            <button class="${l.active ? 'amber' : 'success'}" onclick="toggleEventList('${escapeJs(l.list_id)}', ${!l.active})">
+              ${l.active ? 'Liste schließen' : 'Aktivieren'}
+            </button>
+            <button class="danger" onclick="deleteEventList('${escapeJs(l.list_id)}')">Löschen</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderTransactions(txs) {
+      const tbody = document.getElementById("txTableBody");
+      if (!txs.length) {
+        tbody.innerHTML = `<tr><td colspan="9" style="color:var(--muted);">Noch keine Buchungen vorhanden.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = txs.map(t => {
+        const vendBadge =
+          t.vend_status === "DISPENSED" ? "ok" :
+          t.vend_status.startsWith("DENIED") ? "warn" : "err";
+        const syncBadge =
+          t.sync_status === "SYNCED" ? "ok" :
+          t.sync_status === "PENDING_SYNC" ? "warn" :
+          t.sync_status === "FAILED_PERMANENT" ? "err" : "neutral";
+        const billingBadge =
+          t.billing_mode === "event_list"
+            ? `<span class="badge ok">🎉 ${escapeHtml(t.event_list_name || "Liste")} (Frei)</span>`
+            : `<span class="badge neutral">Privat</span>`;
+
+        return `
+          <tr>
+            <td>#${t.id}</td>
+            <td>${escapeHtml(t.created_at.replace("T", " ").replace("+00:00", ""))}</td>
+            <td>${escapeHtml(t.member_name || "—")}</td>
+            <td><code>${escapeHtml(t.chip_uid)}</code></td>
+            <td>${t.mdb_slot ? `[Slot ${t.mdb_slot}] ` : ""}${escapeHtml(t.drink_name || "—")}</td>
+            <td>${billingBadge}</td>
+            <td>${t.vend_status === "DISPENSED" ? `<strong>${t.price_eur} €</strong>` : `<span style="color:var(--muted);">0.00 €</span>`}</td>
+            <td><span class="badge ${vendBadge}">${escapeHtml(t.vend_status)}</span></td>
+            <td>
+              <span class="badge ${syncBadge}">${escapeHtml(t.sync_status)}</span>
+              ${t.last_sync_error ? `<div style="font-size:0.72rem;color:#f87171;">${escapeHtml(t.last_sync_error)}</div>` : ""}
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function scanChip(uid) {
+      await api("/api/sim/rfid-scan", {
+        method: "POST",
+        body: JSON.stringify({ chip_uid: uid }),
+      });
+      await refreshAll();
+    }
+
+    async function scanCustomChip() {
+      const input = document.getElementById("customChipInput");
+      if (!input.value.trim()) return;
+      await scanChip(input.value.trim());
+      input.value = "";
+    }
+
+    async function simSelectSlot(slotNumber, priceCents) {
+      await api("/api/sim/mdb-select", {
+        method: "POST",
+        body: JSON.stringify({ slot_number: slotNumber, price_cents: priceCents }),
+      });
+      await refreshAll();
+    }
+
+    async function simDispense(success) {
+      await api("/api/sim/mdb-dispense", {
+        method: "POST",
+        body: JSON.stringify({ success }),
+      });
+      await refreshAll();
+    }
+
+    async function cancelSession() {
+      await api("/api/sim/mdb-cancel", { method: "POST" });
+      await refreshAll();
+    }
+
+    async function triggerOledDiag() {
+      await api("/api/oled/diagnostics", { method: "POST" });
+      await refreshAll();
+    }
+
+    async function toggleOutage() {
+      await api("/api/mock-ffweb/outage", {
+        method: "POST",
+        body: JSON.stringify({ simulate_outage: !currentOutage }),
+      });
+      await refreshAll();
+    }
+
+    async function retrySync() {
+      await api("/api/transactions/retry-sync", { method: "POST" });
+      await refreshAll();
+    }
+
+    async function topupMember(memberId, deltaEur) {
+      await api(`/api/mock-ffweb/members/${encodeURIComponent(memberId)}/topup`, {
+        method: "POST",
+        body: JSON.stringify({ delta_eur: deltaEur }),
+      });
+      await refreshAll();
+    }
+
+    async function saveMockMember() {
+      const member_id = document.getElementById("newMemberId").value.trim();
+      const chip_uid = document.getElementById("newMemberUid").value.trim();
+      const name = document.getElementById("newMemberName").value.trim();
+      const balance_eur = document.getElementById("newMemberBal").value.trim() || "0.00";
+      if (!member_id || !chip_uid || !name) return alert("Bitte ID, Chip-UID und Name ausfüllen.");
+      await api("/api/mock-ffweb/members", {
+        method: "POST",
+        body: JSON.stringify({ member_id, chip_uid, name, balance_eur, active: true }),
+      });
+      document.getElementById("newMemberId").value = "";
+      document.getElementById("newMemberUid").value = "";
+      document.getElementById("newMemberName").value = "";
+      await refreshAll();
+    }
+
+    function copyUnknownUid() {
+      if (lastUnknownUid && navigator.clipboard) {
+        navigator.clipboard.writeText(lastUnknownUid);
+      }
+    }
+
+    async function quickRegisterUnknownChip() {
+      if (!lastUnknownUid) return;
+      const name = prompt(`Name für Feuerwehr-Chip ${lastUnknownUid}:`, "FM Neues Mitglied");
+      if (!name) return;
+      const shortId = "FF-" + lastUnknownUid.slice(-4);
+      await api("/api/mock-ffweb/members", {
+        method: "POST",
+        body: JSON.stringify({
+          member_id: shortId,
+          chip_uid: lastUnknownUid,
+          name,
+          balance_eur: "15.00",
+          active: true,
+        }),
+      });
+      await refreshAll();
+    }
+
+    function prefillSlot(slot, prodId, name, priceEur) {
+      document.getElementById("slotNumInput").value = slot;
+      document.getElementById("slotProdInput").value = prodId;
+      document.getElementById("slotNameInput").value = name;
+      document.getElementById("slotPriceInput").value = priceEur;
+    }
+
+    async function saveSlot() {
+      const slot = parseInt(document.getElementById("slotNumInput").value, 10);
+      const ffweb_product_id = document.getElementById("slotProdInput").value.trim();
+      const drink_name = document.getElementById("slotNameInput").value.trim();
+      const price_eur = document.getElementById("slotPriceInput").value.trim();
+      if (!slot || !ffweb_product_id || !drink_name || !price_eur) {
+        return alert("Bitte alle Slot-Felder ausfüllen.");
+      }
+      await api(`/api/slots/${slot}`, {
+        method: "PUT",
+        body: JSON.stringify({ ffweb_product_id, drink_name, price_eur, active: true }),
+      });
+      await refreshAll();
+    }
+
+    async function deleteSlot(slot) {
+      if (!confirm(`Slot ${slot} wirklich löschen?`)) return;
+      await api(`/api/slots/${slot}`, { method: "DELETE" });
+      await refreshAll();
+    }
+
+    async function pressButton(btn) {
+      await api("/api/buttons/press", {
+        method: "POST",
+        body: JSON.stringify({ button: btn }),
+      });
+      await refreshAll();
+    }
+
+    function toggleNewListForm() {
+      const f = document.getElementById("newListForm");
+      f.style.display = f.style.display === "none" ? "block" : "none";
+    }
+
+    async function toggleEventList(listId, active) {
+      await api(`/api/event-lists/${encodeURIComponent(listId)}/toggle`, {
+        method: "POST",
+        body: JSON.stringify({ active }),
+      });
+      await refreshAll();
+    }
+
+    async function deleteEventList(listId) {
+      if (!confirm(`Verrechnungsliste "${listId}" wirklich löschen?`)) return;
+      await api(`/api/event-lists/${encodeURIComponent(listId)}`, { method: "DELETE" });
+      await refreshAll();
+    }
+
+    async function createEventList() {
+      const list_id = document.getElementById("newListId").value.trim();
+      const name = document.getElementById("newListName").value.trim();
+      const notes = document.getElementById("newListNotes").value.trim();
+      if (!list_id || !name) return alert("Bitte Listen-ID und Name eingeben.");
+      await api("/api/event-lists", {
+        method: "POST",
+        body: JSON.stringify({ list_id, name, active: true, notes }),
+      });
+      document.getElementById("newListId").value = "";
+      document.getElementById("newListName").value = "";
+      document.getElementById("newListNotes").value = "";
+      toggleNewListForm();
+      await refreshAll();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function escapeJs(str) {
+      return String(str).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+    }
+
+    function connectSSE() {
+      const dot = document.getElementById("sseDot");
+      const es = new EventSource("/api/events");
+      es.onopen = () => { dot.className = "dot ok"; };
+      es.onmessage = () => { refreshAll(); };
+      es.onerror = () => { dot.className = "dot warn"; };
+    }
+
+    refreshAll();
+    connectSSE();
+  </script>
+</body>
+</html>

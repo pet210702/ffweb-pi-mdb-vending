@@ -1,0 +1,16 @@
+[Unit]
+Description=FF Getraenkeautomat — SandenVendo G-Drink DM9 MDB & FFWEB Controller
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+SupplementaryGroups=input dialout i2c
+WorkingDirectory=/opt/getraenkeautomat
+EnvironmentFile=/opt/getraenkeautomat/.env
+ExecStart=/opt/getraenkeautomat/.venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 3
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

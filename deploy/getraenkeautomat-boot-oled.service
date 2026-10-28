@@ -1,0 +1,16 @@
+[Unit]
+Description=FF Getraenkeautomat — Early-Boot OLED Progress & Diagnostics Splash
+DefaultDependencies=no
+After=local-fs.target tmp.mount systemd-modules-load.service systemd-udevd.service
+Before=getraenkeautomat.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+SupplementaryGroups=i2c input dialout
+WorkingDirectory=/opt/getraenkeautomat
+ExecStart=/opt/getraenkeautomat/.venv/bin/python3 -m app.oled.boot_splash
+Restart=no
+
+[Install]
+WantedBy=sysinit.target

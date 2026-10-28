@@ -1,0 +1,9 @@
+[project]
+name = "ff-getraenkeautomat"
+version = "1.0.0"
+description = "SandenVendo G-Drink DM9 MDB & USB RFID Vending Controller with FFWEB integration"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
