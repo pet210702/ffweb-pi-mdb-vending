@@ -77,6 +77,7 @@ class OledDisplayManager:
         self._menu_state: dict[str, Any] | None = None
         self._hold_until: float = 0.0
         self._last_activity_ts: float = time.monotonic()
+        self._last_refresh_ts: float = 0.0
         self._sleeping: bool = False
         self._font_cache: dict[tuple[bool, int], Any] = {}
         self._fit_cache: dict[tuple[str, bool, int, int, int], tuple[str, Any, int]] = {}
@@ -233,12 +234,14 @@ class OledDisplayManager:
 
         for addr in (self.i2c_address, 0x3D if self.i2c_address == 0x3C else 0x3C):
             try:
+                self._close_device()
                 serial = luma_i2c(port=self.i2c_port, address=addr)
                 driver_cls = sh1106 if self.mode == "sh1106" else ssd1306
                 dev = driver_cls(serial, width=128, height=64)
                 dev.contrast(255)
                 self._device = dev
                 self._connected = True
+                self._sleeping = False
                 self._driver_name = f"{driver_cls.__name__}@0x{addr:02X}"
                 self._last_error = None
                 logger.info(
@@ -251,6 +254,111 @@ class OledDisplayManager:
                 self._last_error = str(exc)
         self._connected = False
         return False
+
+    def _close_device(self) -> None:
+        dev = self._device
+        self._device = None
+        if dev is not None and hasattr(dev, "cleanup"):
+            try:
+                dev.cleanup()
+            except Exception:
+                pass
+
+    def _handle_i2c_error(self, context: str, exc: Exception) -> None:
+        was_connected = self._connected
+        self._connected = False
+        self._last_error = str(exc)
+        self._close_device()
+        if was_connected:
+            logger.warning("OLED I2C %s failed (%s); will auto-reconnect when plugged back in", context, exc)
+
+    def _ensure_display_configured(self) -> None:
+        """
+        Re-send non-blanking controller setup registers (charge pump ON, addressing mode,
+        orientation, contrast, and Display ON 0xAF) without sending 0xAE (Display OFF).
+        If the OLED briefly lost power or was unplugged and plugged back in (Power-On Reset),
+        this wakes the internal charge pump and display controller with zero flicker.
+        """
+        dev = self._device
+        if dev is None or not hasattr(dev, "command"):
+            return
+        if self.mode == "sh1106" or (self._driver_name and self._driver_name.startswith("sh1106")):
+            dev.command(
+                0xD5, 0x50,  # SETDISPLAYCLOCKDIV
+                0xA8, 0x3F,  # SETMULTIPLEX (64-1)
+                0xD3, 0x00,  # SETDISPLAYOFFSET
+                0x40,        # SETSTARTLINE (0)
+                0xAD, 0x8B,  # SH1106 DC-DC charge pump ON
+                0xA1,        # SEGREMAP
+                0xC8,        # COMSCANDEC
+                0xDA, 0x12,  # SETCOMPINS
+                0xD9, 0x22,  # SETPRECHARGE
+                0xDB, 0x35,  # SETVCOMDETECT
+                0x81, 0xFF,  # SETCONTRAST (255)
+                0xA4,        # DISPLAYALLON_RESUME
+                0xA6,        # NORMALDISPLAY
+                0xAF,        # DISPLAYON
+            )
+        else:
+            dev.command(
+                0xD5, 0x80,  # SETDISPLAYCLOCKDIV
+                0xA8, 0x3F,  # SETMULTIPLEX (64-1)
+                0xD3, 0x00,  # SETDISPLAYOFFSET
+                0x40,        # SETSTARTLINE (0)
+                0x8D, 0x14,  # CHARGEPUMP (Enable charge pump after POR!)
+                0x20, 0x00,  # MEMORYMODE (Horizontal addressing mode)
+                0xA1,        # SEGREMAP
+                0xC8,        # COMSCANDEC
+                0xDA, 0x12,  # SETCOMPINS
+                0xD9, 0xF1,  # SETPRECHARGE
+                0xDB, 0x40,  # SETVCOMDETECT
+                0x81, 0xFF,  # SETCONTRAST (255)
+                0xA4,        # DISPLAYALLON_RESUME
+                0xA6,        # NORMALDISPLAY
+                0xAF,        # DISPLAYON
+            )
+
+    def _redraw_current_screen_sync(self) -> None:
+        """Re-render whichever screen state is currently active (used on hot-plug recovery and periodic refresh)."""
+        if self._menu_state is not None:
+            self._draw_menu_frame(
+                self._menu_state["header"],
+                self._menu_state["option"],
+                self._menu_state["subtitle"],
+                self._menu_state["footer"],
+            )
+        elif self._debug_lines is not None:
+            self._draw_debug_frame(self._header, self._debug_lines)
+        else:
+            self._draw_frame(self._header, self._line1, self._line2)
+
+    def _periodic_hardware_check_sync(self) -> None:
+        """
+        Periodically verifies the OLED is reachable on I2C and self-heals after any
+        accidental disconnect/reconnect or brief power brownout (POR).
+        """
+        if self.mode == "disabled":
+            return
+        if not self._connected or self._device is None:
+            if self._try_init_hardware():
+                self._redraw_current_screen_sync()
+            return
+
+        if self._sleeping:
+            try:
+                if hasattr(self._device, "command"):
+                    self._device.command(0xAE)
+            except Exception as exc:
+                self._handle_i2c_error("sleep check", exc)
+            return
+
+        try:
+            self._ensure_display_configured()
+        except Exception as exc:
+            self._handle_i2c_error("periodic check", exc)
+            return
+
+        self._redraw_current_screen_sync()
 
     def _clear_hardware(self) -> None:
         if self._device is not None:
@@ -344,6 +452,7 @@ class OledDisplayManager:
 
         try:
             self._wake_if_sleeping()
+            self._ensure_display_configured()
 
             img = Image.new("1", (128, 64), 0)
             draw = ImageDraw.Draw(img)
@@ -369,11 +478,9 @@ class OledDisplayManager:
             draw.text((3, 39), l2_txt, font=l2_font, fill=1)
 
             self._device.display(img)
+            self._last_refresh_ts = time.monotonic()
         except Exception as exc:
-            self._connected = False
-            self._device = None
-            self._last_error = str(exc)
-            logger.warning("OLED I2C write failed (%s)", exc)
+            self._handle_i2c_error("frame write", exc)
 
     def _draw_debug_frame(self, header: str, lines: list[str]) -> None:
         if not self._connected and self.mode != "disabled":
@@ -385,6 +492,7 @@ class OledDisplayManager:
 
         try:
             self._wake_if_sleeping()
+            self._ensure_display_configured()
 
             img = Image.new("1", (128, 64), 0)
             draw = ImageDraw.Draw(img)
@@ -404,11 +512,9 @@ class OledDisplayManager:
                 draw.text((3, y_positions[idx]), txt, font=fnt, fill=1)
 
             self._device.display(img)
+            self._last_refresh_ts = time.monotonic()
         except Exception as exc:
-            self._connected = False
-            self._device = None
-            self._last_error = str(exc)
-            logger.warning("OLED debug frame write failed (%s)", exc)
+            self._handle_i2c_error("debug frame write", exc)
 
     def _draw_menu_frame(
         self,
@@ -426,6 +532,7 @@ class OledDisplayManager:
 
         try:
             self._wake_if_sleeping()
+            self._ensure_display_configured()
 
             img = Image.new("1", (128, 64), 0)
             draw = ImageDraw.Draw(img)
@@ -459,11 +566,9 @@ class OledDisplayManager:
             draw.text((ftr_x, 51), ftr_txt, font=ftr_font, fill=1)
 
             self._device.display(img)
+            self._last_refresh_ts = time.monotonic()
         except Exception as exc:
-            self._connected = False
-            self._device = None
-            self._last_error = str(exc)
-            logger.warning("OLED menu frame write failed (%s)", exc)
+            self._handle_i2c_error("menu frame write", exc)
 
     def _enter_screensaver(self) -> None:
         if self._device is None or self._sleeping:
@@ -472,8 +577,8 @@ class OledDisplayManager:
             self._device.clear()
             self._device.hide()
             self._sleeping = True
-        except Exception:
-            pass
+        except Exception as exc:
+            self._handle_i2c_error("screensaver", exc)
 
     async def _event_loop(self) -> None:
         queue = self._events.subscribe()
@@ -493,6 +598,8 @@ class OledDisplayManager:
                         and (now - self._last_activity_ts) >= self.screensaver_sec
                     ):
                         await asyncio.to_thread(self._enter_screensaver)
+                    elif not self._connected or (now - self._last_refresh_ts) >= 1.5:
+                        await asyncio.to_thread(self._periodic_hardware_check_sync)
         finally:
             self._events.unsubscribe(queue)
 
@@ -573,8 +680,8 @@ class OledDisplayManager:
             await self._show("NETZWERKFEHLER", "FFWEB offline", "Bitte später!", hold_sec=5.0)
 
         elif etype == "oled_wake_requested":
-            self._wake_if_sleeping()
             self._last_activity_ts = time.monotonic()
+            await asyncio.to_thread(self._redraw_current_screen_sync)
 
         elif etype == "rfid_status_changed":
             self._wake_if_sleeping()

@@ -271,3 +271,88 @@ def test_oled_shows_error_when_rfid_disconnected(tmp_path: Path) -> None:
         assert reconnected["line2"] == "Chip vorhalten"
 
 
+def test_oled_hotplug_disconnect_and_por_recovery() -> None:
+    """Verify OLED recovers automatically if disconnected and reconnected (or after a brief Power-On Reset)."""
+    from app.events import EventBus
+    from app.oled.display import OledDisplayManager
+
+    class FakeOledDevice:
+        def __init__(self) -> None:
+            self.unplugged = False
+            self.charge_pump_enabled = True
+            self.display_on = True
+            self.commands_sent: list[tuple[int, ...]] = []
+            self.frames_displayed = 0
+            self.cleaned_up = False
+
+        def command(self, *cmd: int) -> None:
+            if self.unplugged:
+                raise OSError(121, "Remote I/O error")
+            self.commands_sent.append(cmd)
+            # Check if SSD1306 Charge Pump ON (0x8D, 0x14) and Display ON (0xAF) were sent
+            for i in range(len(cmd) - 1):
+                if cmd[i] == 0x8D and cmd[i + 1] == 0x14:
+                    self.charge_pump_enabled = True
+            if 0xAF in cmd:
+                self.display_on = True
+
+        def display(self, _img) -> None:
+            if self.unplugged:
+                raise OSError(121, "Remote I/O error")
+            if self.charge_pump_enabled and self.display_on:
+                self.frames_displayed += 1
+
+        def contrast(self, _val: int) -> None:
+            if self.unplugged:
+                raise OSError(121, "Remote I/O error")
+
+        def show(self) -> None:
+            pass
+
+        def clear(self) -> None:
+            pass
+
+        def cleanup(self) -> None:
+            self.cleaned_up = True
+
+    bus = EventBus()
+    oled = OledDisplayManager(events=bus, mode="ssd1306")
+    dev1 = FakeOledDevice()
+    oled._device = dev1
+    oled._connected = True
+    oled._driver_name = "ssd1306@0x3C"
+
+    # 1. Simulate a brief loose-wire Power-On Reset (charge pump & display reset to OFF without I2C error)
+    dev1.charge_pump_enabled = False
+    dev1.display_on = False
+    oled._periodic_hardware_check_sync()
+    assert dev1.charge_pump_enabled is True
+    assert dev1.display_on is True
+
+    # 2. Simulate full physical disconnect (I2C Remote I/O error)
+    dev1.unplugged = True
+    oled._periodic_hardware_check_sync()
+    assert oled._connected is False
+    assert oled._device is None
+    assert dev1.cleaned_up is True
+
+    # 3. Simulate plugging the OLED back in -> next periodic check re-initializes and configures screen
+    dev2 = FakeOledDevice()
+    dev2.charge_pump_enabled = False
+    dev2.display_on = False
+
+    def fake_reinit() -> bool:
+        oled._device = dev2
+        oled._connected = True
+        oled._driver_name = "ssd1306@0x3C"
+        dev2.command(0x8D, 0x14, 0xAF)
+        return True
+
+    oled._try_init_hardware = fake_reinit  # type: ignore[method-assign]
+    oled._periodic_hardware_check_sync()
+    assert oled._connected is True
+    assert dev2.charge_pump_enabled is True
+    assert dev2.display_on is True
+
+
+
