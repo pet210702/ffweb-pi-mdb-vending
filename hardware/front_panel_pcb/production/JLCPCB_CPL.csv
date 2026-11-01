@@ -1,0 +1,4 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+C1,100nF,C_Disc_D4.7mm_W2.5mm_P5.00mm,109.000000,-108.500000,0.000000,Bottom
+J1,RPi_JST_XH_7P,JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical,122.500000,-150.000000,0.000000,Bottom
+J2,RPi_Dupont_7P,PinHeader_1x07_P2.54mm_Vertical,105.000000,-113.000000,180.000000,Bottom

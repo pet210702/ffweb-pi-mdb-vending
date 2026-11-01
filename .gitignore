@@ -8,3 +8,20 @@ data/
 *.db-wal
 .env
 .DS_Store
+
+# --- Hardware: vorerst nur die Frontplatine veröffentlichen ---
+hardware/*
+!hardware/front_panel_pcb/
+hardware/**/.DS_Store
+
+# KiCad: lokale Caches, Backups & Benutzer-Einstellungen
+*.kicad_prl
+fp-info-cache
+*-backups/
+*.bak*
+_autosave-*
+*.lck
+
+# DRC/ERC-Testberichte & Test-Platinen im Hauptordner
+/*.rpt
+/test_*

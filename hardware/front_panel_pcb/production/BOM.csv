@@ -1,0 +1,8 @@
+"Refs","Value","Footprint","Qty","DNP"
+"C1","100nF","Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm","1",""
+"J1","RPi_JST_XH_7P","Connector_JST:JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical","1",""
+"J2","RPi_Dupont_7P","Connector_PinHeader_2.54mm:PinHeader_1x07_P2.54mm_Vertical","1",""
+"J3","OLED_0.96_I2C_DIRECT","Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical","1",""
+"SW1","BTN1_ZURUECK","Button_Switch_THT:SW_PUSH_6mm","1",""
+"SW2","BTN2_OK","Button_Switch_THT:SW_PUSH_6mm","1",""
+"SW3","BTN3_WEITER","Button_Switch_THT:SW_PUSH_6mm","1",""
