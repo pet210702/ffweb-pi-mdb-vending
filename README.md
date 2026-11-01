@@ -1,113 +1,133 @@
-# FF Getränkeautomat — SandenVendo G-Drink DM9 & FFWEB MDB Controller
+# FF Getränkeautomat – MDB- & FFWEB-Steuerung für den SandenVendo G-Drink DM9
 
-Open-source Raspberry Pi vending machine controller that bridges a **SandenVendo G-Drink DM9** (via the **MDB Cashless** bus), a **13.56 MHz USB RFID reader**, a **0.96" I2C OLED display**, **3 physical navigation buttons**, and **FFWEB (`https://www.ffweb.at`)** for fire station beverage management.
+Open-Source-Steuerung auf Basis eines Raspberry Pi, die einen **SandenVendo G-Drink DM9** (über den **MDB-Cashless-Bus**), einen **13,56-MHz-USB-RFID-Leser**, ein **0,96"-I2C-OLED-Display**, **3 Bedientasten** und **FFWEB (`https://www.ffweb.at`)** zur Getränkeverrechnung im Feuerwehrhaus miteinander verbindet.
 
-Designed to run reliably even on a single-core **Raspberry Pi 1 Model B+ (ARMv6, 512 MB RAM)** as well as newer Raspberry Pi models (Pi Zero 2 W, Pi 3, Pi 4, Pi 5).
-
----
-
-## ✨ Key Features
-
-- **Card-First & Selection-First ("Always Idle") MDB Flows:**
-  - *Card-First:* Scan your firefighter RFID chip first → select between private balance or an open station event list (*Verrechnungsliste*) → credit is authorized on the G-Drink DM9 → select your drink on the machine keypad.
-  - *Selection-First:* Select a drink slot on the G-Drink DM9 first → the OLED prompts `Chip vorhalten` with the drink name & price → scan your chip to authorize and dispense immediately.
-- **Station Event Lists (*Verrechnungslisten / Anlässe*):**
-  - Create open lists for alarms (*Einsatz*), drills (*Übung*), or station events (*Kameradschaft / Sitzung*) via the Web Dashboard.
-  - When one or more lists are open, members use the **3 physical buttons** (`Zurück`, `OK`, `Weiter`) to choose between **Privat (Guthaben)** (deducted from personal balance) or an active **Verrechnungsliste** (`0.00 EUR` personal charge, booked to the event list).
-- **Safe Dispense Accounting (Zero Charge on Jam/Cancel):**
-  - Uses integer-cent arithmetic throughout the entire stack.
-  - Deducts balance **only** after the G-Drink DM9's optical elevator delivery sensor confirms `c,VEND,SUCCESS`. Jammed bottles (`c,ERR,VEND 3`) or cancelled selections (`c,ERR,VEND 1`) charge `0.00 EUR`.
-- **Offline-First SQLite WAL Queue & Idempotent FFWEB Sync:**
-  - Completed vends are persisted immediately to a local SQLite database (`WAL` mode) with a unique UUID `idempotency_key`.
-  - If station Wi-Fi/LAN or FFWEB is temporarily unreachable, a background worker retries pending transactions automatically without double-charging.
-- **0.96" I2C OLED Status Display & Real-Time Hardware Monitoring:**
-  - Crisp 4-line status display (`SSD1306` / `SH1106` `128x64`) with automatic screensaver, early-boot splash service, and FreeType text-fitting cache.
-  - **Live USB RFID Watchdog:** Immediately displays `FEHLER: RFID / Lesegerät getrennt / USB prüfen!` on the OLED if the USB RFID reader is unplugged, and recovers within ~1.5 seconds when reconnected.
-  - **1+3 Button Diagnostic Combo:** Pressing **Button 1 (Left)** and **Button 3 (Right)** simultaneously opens a 10-second live diagnostic screen showing LAN IP, MDB status, RFID status, and pending sync queue count.
-- **Built-in Web Dashboard & Virtual G-Drink DM9 Simulator (`/`):**
-  - Manage slot-to-drink mappings, test chips, event lists, and inspect live hardware states via Server-Sent Events (SSE).
-  - Full browser-based simulator for the G-Drink DM9, RFID scanner, 3 buttons, and 128x64 OLED mirror — develop and test everything before connecting physical MDB hardware.
+Läuft zuverlässig selbst auf einem einkernigen **Raspberry Pi 1 Model B+ (ARMv6, 512 MB RAM)** sowie auf neueren Modellen (Pi Zero 2 W, Pi 3, Pi 4, Pi 5).
 
 ---
 
-## 🛒 Bill of Materials (Parts List)
+## ✨ Funktionen
 
-| Component | Recommended Model / Specification | Interface | Notes |
+- **Zwei Bedienabläufe – „Chip zuerst“ und „Getränk zuerst“:**
+  - *Chip zuerst:* Feuerwehr-Chip vorhalten → zwischen privatem Guthaben oder einer offenen Verrechnungsliste wählen → Kredit wird am G-Drink DM9 freigegeben → Getränk am Automaten wählen.
+  - *Getränk zuerst:* Fach am G-Drink DM9 wählen → das OLED zeigt `Chip vorhalten` mit Getränkename und Preis → Chip vorhalten, die Ausgabe erfolgt sofort.
+- **Verrechnungslisten / Anlässe:**
+  - Offene Listen für Einsätze, Übungen oder Kameradschaftsabende / Sitzungen direkt im Web-Dashboard anlegen.
+  - Sind Listen offen, wählen Mitglieder mit den **3 Tasten** (`Zurück`, `OK`, `Weiter`) zwischen **Privat (Guthaben)** und einer aktiven **Verrechnungsliste** (`0,00 EUR` privat, Buchung auf den Anlass).
+- **Sichere Abrechnung – kein Abzug bei Störung oder Abbruch:**
+  - Durchgehend Ganzzahl-Arithmetik in Cent.
+  - Abgebucht wird **erst**, wenn der optische Ausgabesensor des DM9 `c,VEND,SUCCESS` meldet. Steckengebliebene Flaschen (`c,ERR,VEND 3`) oder abgebrochene Auswahlen (`c,ERR,VEND 1`) kosten `0,00 EUR`.
+- **Offline-fähige SQLite-Warteschlange & idempotente FFWEB-Synchronisation:**
+  - Jeder Verkauf wird sofort lokal in SQLite (`WAL`-Modus) mit eindeutigem `idempotency_key` (UUID) gespeichert.
+  - Ist das WLAN/LAN oder FFWEB vorübergehend nicht erreichbar, überträgt ein Hintergrunddienst offene Buchungen automatisch nach – ohne Doppelbuchungen.
+- **0,96"-OLED-Statusanzeige & Hardware-Überwachung:**
+  - 4-zeilige Anzeige (`SSD1306` / `SH1106`, `128×64`) mit Bildschirmschoner, Boot-Splash und automatischer Textanpassung.
+  - **OLED-Hot-Plug:** Wird das Display kurz getrennt oder verliert es die Versorgung, verbindet es sich automatisch neu und wird ohne Flackern neu initialisiert.
+  - **RFID-Überwachung:** Wird der USB-Leser abgesteckt, erscheint sofort `FEHLER: RFID / Lesegerät getrennt / USB prüfen!`; nach dem Wiederanstecken läuft alles innerhalb von ca. 1,5 s weiter.
+  - **Diagnose-Kombination (Taste 1 + 3):** Gleichzeitiges Drücken der linken und rechten Taste zeigt 10 Sekunden lang LAN-IP, MDB-Status, RFID-Status und die Anzahl offener Synchronisationen.
+- **Web-Dashboard & virtueller G-Drink-DM9-Simulator (`/`):**
+  - Fachbelegung, Test-Chips und Verrechnungslisten verwalten sowie den Live-Zustand der Hardware per Server-Sent Events (SSE) verfolgen.
+  - Vollständiger Browser-Simulator für DM9, RFID-Leser, 3 Tasten und einen 128×64-OLED-Spiegel – alles lässt sich testen, bevor echte MDB-Hardware angeschlossen ist.
+
+---
+
+## 🛒 Stückliste
+
+| Komponente | Empfohlenes Modell / Spezifikation | Schnittstelle | Hinweise |
 | :--- | :--- | :--- | :--- |
-| **Single-Board Computer** | Raspberry Pi 1 Model B+ Rev 1.2 (or Pi 3B+ / 4B / Zero 2 W) | Ethernet / USB / 40-pin GPIO | Runs Debian Trixie / Raspberry Pi OS (32-bit or 64-bit) |
-| **Cooling (Recommended for Pi 1)** | 5V Aluminum Heatsink + Fan Cooler + Copper Shim (`15x15mm`) | 5V & GND GPIO | Allows stable 1000 MHz Turbo overclock at ~30 °C |
-| **MDB Cashless Interface** | **Qibixx MDB-USB Interface** (or Qibixx MDB Pi HAT) | USB CDC Serial (`/dev/ttyACM0`) | Connects Raspberry Pi USB to the vending machine's 6-pin Molex MDB bus |
-| **RFID Chip Reader** | **13.56 MHz USB HID RFID Reader** (e.g., `Sycreader` / `IC_Reader 08ff:0009`) | USB HID (`evdev`) | Reads 10-digit decimal UID from MIFARE Classic / NFC keyfobs |
-| **OLED Display** | **0.96" I2C OLED Display (`128x64`)** (`SSD1306` or `SH1106`) | I2C (`/dev/i2c-1`, `0x3C`) | 4-pin module (`VCC`, `GND`, `SCL`, `SDA`) |
-| **Navigation Buttons (3x)** | Momentary Push Buttons (Tactile or 12mm/16mm Panel-Mount Arcade Buttons) | GPIO + GND (`Active-Low`) | Uses internal Raspberry Pi `PULL_UP` resistors — no external resistors required |
-| **Power Supply & Storage** | Official 5V Micro-USB / USB-C PSU + 16 GB Industrial microSD Card | Power / SD | High-endurance microSD recommended for continuous operation |
-| **Vending Machine** | **SandenVendo G-Drink DM9** (with SF01 Controller Board) | MDB Slave | Elevator bottle/can vending machine |
+| **Einplatinenrechner** | Raspberry Pi 1 Model B+ Rev 1.2 (oder Pi 3B+ / 4B / Zero 2 W) | Ethernet / USB / 40-Pin-GPIO | Debian Trixie / Raspberry Pi OS (32 oder 64 Bit) |
+| **Kühlung (empfohlen beim Pi 1)** | 5-V-Alu-Kühlkörper + Lüfter + Kupfer-Shim (`15×15 mm`) | 5 V & GND (GPIO) | Ermöglicht stabilen 1000-MHz-Turbo bei ca. 30 °C |
+| **MDB-Cashless-Interface** | **Qibixx MDB-USB Interface** (oder Qibixx MDB Pi HAT) | USB-CDC seriell (`/dev/ttyACM0`) | Verbindet den Pi mit dem 6-poligen Molex-MDB-Bus des Automaten |
+| **RFID-Leser** | **13,56-MHz-USB-HID-Leser** (z. B. `Sycreader` / `IC_Reader 08ff:0009`) | USB-HID (`evdev`) | Liefert eine 10-stellige dezimale UID von MIFARE-Classic-/NFC-Chips |
+| **OLED-Display** | **0,96"-I2C-OLED (`128×64`)** (`SSD1306` oder `SH1106`) | I2C (`/dev/i2c-1`, `0x3C`) | 4-polig (`VCC`, `GND`, `SCL`, `SDA`) |
+| **Bedientasten (3×)** | Taster (6-mm-Printtaster oder 12/16-mm-Einbautaster) | GPIO + GND (Active-Low) | Nutzt die internen Pull-ups des Pi – keine externen Widerstände nötig |
+| **Frontplatine (optional)** | [Eigene Frontplatine](#-frontplatine-oled--3-tasten) mit OLED + 3 Tastern | 7-polig JST-XH / Stiftleiste | Siehe [`hardware/front_panel_pcb`](hardware/front_panel_pcb/) |
+| **Netzteil & Speicher** | Offizielles 5-V-Netzteil + 16-GB-Industrie-microSD | Strom / SD | High-Endurance-microSD für Dauerbetrieb empfohlen |
+| **Getränkeautomat** | **SandenVendo G-Drink DM9** (mit SF01-Steuerplatine) | MDB-Slave | Lift-Automat für Flaschen/Dosen |
 
 ---
 
-## 🔌 Wiring & Pinout Guide (Raspberry Pi 40-Pin GPIO Header)
+## 🔌 Verdrahtung (40-Pin-GPIO-Leiste des Raspberry Pi)
 
-All components connect directly to the Raspberry Pi's 40-pin header without requiring an intermediate HAT:
+Alle Komponenten werden direkt an die GPIO-Leiste angeschlossen – ein zusätzlicher HAT ist nicht nötig:
 
 ```text
-                 Raspberry Pi 40-Pin GPIO Header (Top Pins 1–20)
+                 Raspberry Pi 40-Pin-GPIO-Leiste (Pins 1–20)
                  ┌──────────────────────┬──────────────────────┐
-   OLED VCC  <── │ (01) 3.3V Power      │ (02) 5V Power        │──> 5V Fan VCC (Red)
-   OLED SDA  <── │ (03) GPIO 2 (SDA1)   │ (04) 5V Power        │
-   OLED SCL  <── │ (05) GPIO 3 (SCL1)   │ (06) GND             │──> 5V Fan GND (Black)
+   OLED VCC  <── │ (01) 3,3 V           │ (02) 5 V             │──> Lüfter + (rot)
+   OLED SDA  <── │ (03) GPIO 2 (SDA1)   │ (04) 5 V             │
+   OLED SCL  <── │ (05) GPIO 3 (SCL1)   │ (06) GND             │──> Lüfter – (schwarz)
                  │ (07) GPIO 4          │ (08) GPIO 14 (TXD)   │
    OLED GND  <── │ (09) GND             │ (10) GPIO 15 (RXD)   │
-   Button 1  <── │ (11) GPIO 17         │ (12) GPIO 18         │
-   Button 2  <── │ (13) GPIO 27         │ (14) GND             │──> Button 1 & 2 GND
-   Button 3  <── │ (15) GPIO 22         │ (16) GPIO 23         │
-                 │ (17) 3.3V Power      │ (18) GPIO 24         │
-                 │ (19) GPIO 10 (MOSI)  │ (20) GND             │──> Button 3 GND
+   Taste 1   <── │ (11) GPIO 17         │ (12) GPIO 18         │
+   Taste 2   <── │ (13) GPIO 27         │ (14) GND             │──> GND Taste 1 & 2
+   Taste 3   <── │ (15) GPIO 22         │ (16) GPIO 23         │
+                 │ (17) 3,3 V           │ (18) GPIO 24         │
+                 │ (19) GPIO 10 (MOSI)  │ (20) GND             │──> GND Taste 3
                  └──────────────────────┴──────────────────────┘
 ```
 
-### 1. 0.96" I2C OLED Display (`SSD1306` @ `0x3C`)
-| OLED Pin | Raspberry Pi Physical Pin | GPIO / Function |
+### 1. 0,96"-I2C-OLED (`SSD1306` @ `0x3C`)
+| OLED-Pin | Physischer Pin am Pi | GPIO / Funktion |
 | :--- | :--- | :--- |
-| **VCC** | **Pin 1** | `3.3V Power` |
+| **VCC** | **Pin 1** | `3,3 V` |
 | **GND** | **Pin 9** | `GND` |
 | **SDA** | **Pin 3** | `GPIO 2 (I2C1 SDA)` |
 | **SCL** | **Pin 5** | `GPIO 3 (I2C1 SCL)` |
 
-### 2. Three Physical Push Buttons (Active-Low with Internal Pull-Up)
-Each button has 2 terminals: connect one terminal to the **GPIO pin** and the other terminal to any **GND pin** (Pins `14` and `20` sit right across from the button GPIOs, or daisy-chain a common ground wire across all three buttons).
+### 2. Drei Bedientasten (Active-Low mit internem Pull-up)
+Jeder Taster hat zwei Anschlüsse: einer an den **GPIO-Pin**, der andere an einen beliebigen **GND-Pin** (Pins `14` und `20` liegen direkt gegenüber; alternativ eine gemeinsame Masseleitung durchschleifen).
 
-| Button Position | Function | GPIO (BCM) | Physical Pin | Ground Pin |
+| Position | Funktion | GPIO (BCM) | Physischer Pin | GND-Pin |
 | :--- | :--- | :--- | :--- | :--- |
-| **Button 1 (Left)** | **Back / Cancel (`Zurück / Abbruch`)** | `GPIO 17` | **Pin 11** | **Pin 14** (`GND`) |
-| **Button 2 (Middle)** | **Select / Confirm (`Auswahl / OK`)** | `GPIO 27` | **Pin 13** | **Pin 14** (`GND`) |
-| **Button 3 (Right)** | **Next / Cycle (`Weiter ▶`)** | `GPIO 22` | **Pin 15** | **Pin 20** (`GND`) |
+| **Taste 1 (links)** | **Zurück / Abbruch** | `GPIO 17` | **Pin 11** | **Pin 14** |
+| **Taste 2 (Mitte)** | **Auswahl / OK** | `GPIO 27` | **Pin 13** | **Pin 14** |
+| **Taste 3 (rechts)** | **Weiter ▶** | `GPIO 22` | **Pin 15** | **Pin 20** |
 
-> **Tip:** Press **Button 1 (Left) + Button 3 (Right)** simultaneously at any time in `IDLE` mode to display the **10-second Diagnostic Menu** on the OLED screen.
+> **Tipp:** Im Ruhezustand (`IDLE`) **Taste 1 + Taste 3** gleichzeitig drücken, um das **10-Sekunden-Diagnosemenü** auf dem OLED anzuzeigen.
 
-### 3. Active 5V Fan Cooler
-| Fan Wire | Raspberry Pi Physical Pin | Function |
+### 3. 5-V-Lüfter
+| Lüfterkabel | Physischer Pin am Pi | Funktion |
 | :--- | :--- | :--- |
-| **Red (+5V)** | **Pin 2** or **Pin 4** | `5V Power` |
-| **Black (GND)** | **Pin 6** | `GND` |
+| **Rot (+5 V)** | **Pin 2** oder **Pin 4** | `5 V` |
+| **Schwarz (GND)** | **Pin 6** | `GND` |
 
-### 4. USB Devices
-- **USB Port 1:** 13.56 MHz USB HID RFID Reader (`/dev/input/by-id/usb-...-event-kbd`).
-- **USB Port 2:** Qibixx MDB-USB Interface (`/dev/ttyACM0`) connected via MDB harness to the SandenVendo G-Drink DM9.
-
----
-
-## ⚙️ Note on RFID UID Format (USB Reader vs. Smartphone NFC Tools)
-
-Standard 13.56 MHz MIFARE Classic chips store a 4-byte hexadecimal serial number.
-- **Smartphone Apps (e.g., NFC Tools):** Display the raw bytes in MSB order (`04:A2:F3:9B`).
-- **USB 13.56 MHz Readers (10-digit Decimal Output):** Reverse the 4 bytes (LSB first: `9B F3 A2 04`) and convert the 32-bit integer to a zero-padded 10-digit decimal string (`2616435204`).
-- Use the **Live Chip Scanner** in the Web Dashboard (`http://<pi-ip>:8000`) to see the exact 10-digit UID emitted by the USB reader and copy it with one click.
+### 4. USB-Geräte
+- **USB-Port 1:** 13,56-MHz-USB-HID-RFID-Leser (`/dev/input/by-id/usb-...-event-kbd`).
+- **USB-Port 2:** Qibixx MDB-USB Interface (`/dev/ttyACM0`), über den MDB-Kabelbaum mit dem G-Drink DM9 verbunden.
 
 ---
 
-## 🚀 Quick Start (Local Development & Simulator on macOS / Linux)
+## 🟩 Frontplatine (OLED + 3 Tasten)
 
-You can run the full stack locally on macOS or Linux without any hardware attached using the built-in virtual simulator:
+<p align="center">
+  <img src="hardware/front_panel_pcb/docs/pcb_3d_top.png" alt="Frontplatine – Vorderseite" width="45%">
+  <img src="hardware/front_panel_pcb/docs/pcb_3d_bottom.png" alt="Frontplatine – Rückseite" width="45%">
+</p>
+
+Für einen sauberen Einbau in die Automatentür gibt es eine eigene 2-lagige Frontplatine (`60 × 56 mm`, KiCad 9):
+
+- **Vorderseite:** nur das 0,96"-OLED und die 3 Taster (`Zurück`, `OK`, `Weiter`) – keine sichtbaren Kabel.
+- **Rückseite:** 7-poliger JST-XH-Stecker (`J1`) bzw. alternativ 7-polige 2,54-mm-Stiftleiste (`J2`) sowie der 100-nF-Abblockkondensator.
+- Die 7 Signale (`+3V3`, `SDA`, `SCL`, `GND`, 3× Taster) passen direkt auf die Pins 1–15 der linken Reihe der GPIO-Leiste – exakt nach der Belegung oben.
+- Fertige Gerber-Daten, BOM, Bestückungsdaten (JLCPCB) und ein STEP-Modell liegen in [`hardware/front_panel_pcb/production/`](hardware/front_panel_pcb/production/).
+
+Details zu Pinbelegung, Abmessungen und Stückliste: [`hardware/front_panel_pcb/README.md`](hardware/front_panel_pcb/README.md).
+
+---
+
+## ⚙️ Hinweis zum RFID-UID-Format (USB-Leser vs. Smartphone-App)
+
+Normale 13,56-MHz-MIFARE-Classic-Chips haben eine 4 Byte lange Seriennummer.
+- **Smartphone-Apps (z. B. NFC Tools):** zeigen die Bytes in MSB-Reihenfolge (`04:A2:F3:9B`).
+- **USB-Leser (10-stellige Dezimalausgabe):** drehen die 4 Bytes um (LSB zuerst: `9B F3 A2 04`) und geben den 32-Bit-Wert als 10-stellige Dezimalzahl mit führenden Nullen aus (`2616435204`).
+- Mit dem **Live-Chip-Scanner** im Web-Dashboard (`http://<pi-ip>:8000`) sieht man die exakte UID des USB-Lesers und kann sie mit einem Klick kopieren.
+
+---
+
+## 🚀 Schnellstart (lokale Entwicklung & Simulator unter macOS / Linux)
+
+Das komplette System läuft auch ohne angeschlossene Hardware mit dem eingebauten Simulator:
 
 ```bash
 git clone https://github.com/pet210702/ffweb-pi-mdb-vending.git
@@ -117,38 +137,38 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run automated test suite
+# Automatische Tests ausführen
 pytest -v
 
-# Start the FastAPI server + Virtual G-Drink DM9 Simulator
+# FastAPI-Server + virtuellen G-Drink DM9 starten
 uvicorn app.main:app --reload --port 8000
 ```
 
-- **Web Dashboard & Simulator:** `http://localhost:8000`
-- **Interactive OpenAPI Docs:** `http://localhost:8000/docs`
+- **Web-Dashboard & Simulator:** `http://localhost:8000`
+- **Interaktive API-Dokumentation (OpenAPI):** `http://localhost:8000/docs`
 
 ---
 
-## 🍓 Raspberry Pi Installation Guide
+## 🍓 Installation auf dem Raspberry Pi
 
-### Step 1: Copy Project & Run Automated Installer
-From your workstation, copy the repository to the Raspberry Pi and run [`deploy/install_pi.sh`](deploy/install_pi.sh):
+### Schritt 1: Projekt kopieren & Installer ausführen
+Das Repository vom Arbeitsrechner auf den Pi kopieren und [`deploy/install_pi.sh`](deploy/install_pi.sh) starten:
 
 ```bash
 scp -r . ffadmin@<pi-ip>:~/getraenkeautomat
 ssh ffadmin@<pi-ip> "bash ~/getraenkeautomat/deploy/install_pi.sh"
 ```
 
-What [`deploy/install_pi.sh`](deploy/install_pi.sh) does automatically:
-1. Installs precompiled Debian/Raspberry Pi OS ARM packages (`python3-fastapi`, `python3-uvicorn`, `python3-httpx`, `python3-serial`, `python3-evdev`, `python3-luma.oled`, `python3-gpiod`, `i2c-tools`, `fonts-dejavu-core`) so installation finishes in seconds even on 32-bit ARMv6 hardware.
-2. Enables the hardware I2C bus (`/dev/i2c-1`) and adds your user to the `input`, `dialout`, `i2c`, and `gpio` groups.
-3. Deploys the application to `/opt/getraenkeautomat` and creates `/opt/getraenkeautomat/.env` from `.env.example`.
-4. Installs and enables two `systemd` services:
-   - `getraenkeautomat-boot-oled.service`: Renders an immediate boot splash screen on the OLED as soon as `/dev/i2c-1` is ready.
-   - `getraenkeautomat.service`: Runs the FastAPI/Uvicorn controller service with automatic restart.
+Was [`deploy/install_pi.sh`](deploy/install_pi.sh) automatisch erledigt:
+1. Installiert vorkompilierte Debian-/Raspberry-Pi-OS-Pakete (`python3-fastapi`, `python3-uvicorn`, `python3-httpx`, `python3-serial`, `python3-evdev`, `python3-luma.oled`, `python3-gpiod`, `i2c-tools`, `fonts-dejavu-core`) – dadurch ist die Installation auch auf 32-Bit-ARMv6 in Sekunden erledigt.
+2. Aktiviert den I2C-Bus (`/dev/i2c-1`) und fügt den Benutzer den Gruppen `input`, `dialout`, `i2c` und `gpio` hinzu.
+3. Installiert die Anwendung nach `/opt/getraenkeautomat` und legt `/opt/getraenkeautomat/.env` aus `.env.example` an.
+4. Richtet zwei `systemd`-Dienste ein und aktiviert sie:
+   - `getraenkeautomat-boot-oled.service`: zeigt sofort einen Boot-Splash am OLED, sobald `/dev/i2c-1` verfügbar ist.
+   - `getraenkeautomat.service`: startet die FastAPI-/Uvicorn-Steuerung mit automatischem Neustart.
 
-### Step 2: (Optional) Apply Raspberry Pi 1 Fast-Boot & Overclock Tweaks
-If running on a **Raspberry Pi 1 Model B+** with active cooling, run [`deploy/optimize_pi.sh`](deploy/optimize_pi.sh) to disable unused background services (`cloud-init`, `bluetooth`, `wpa_supplicant`, `NetworkManager-wait-online`) and enable the official 1000 MHz Turbo profile:
+### Schritt 2 (optional): Schnellstart & Übertaktung für den Raspberry Pi 1
+Auf einem **Raspberry Pi 1 Model B+** mit aktiver Kühlung deaktiviert [`deploy/optimize_pi.sh`](deploy/optimize_pi.sh) nicht benötigte Dienste (`cloud-init`, `bluetooth`, `wpa_supplicant`, `NetworkManager-wait-online`) und aktiviert das offizielle 1000-MHz-Turbo-Profil:
 
 ```bash
 ssh ffadmin@<pi-ip> "bash /opt/getraenkeautomat/deploy/optimize_pi.sh && sudo reboot"
@@ -156,85 +176,94 @@ ssh ffadmin@<pi-ip> "bash /opt/getraenkeautomat/deploy/optimize_pi.sh && sudo re
 
 ---
 
-## 🔄 Switching from Simulator to Live MDB Hardware & FFWEB
+## 🔄 Vom Simulator auf echte MDB-Hardware & FFWEB umstellen
 
-Edit `/opt/getraenkeautomat/.env` on the Raspberry Pi and restart the service (`sudo systemctl restart getraenkeautomat`):
+`/opt/getraenkeautomat/.env` auf dem Pi bearbeiten und den Dienst neu starten (`sudo systemctl restart getraenkeautomat`):
 
-### 1. Enable Qibixx MDB-USB Interface
+### 1. Qibixx MDB-USB Interface aktivieren
 ```ini
 MDB_MODE=qibixx
 MDB_SERIAL_PORT=/dev/ttyACM0
 MDB_BAUDRATE=115200
 ```
-*On the SandenVendo G-Drink DM9 SF01 controller board, ensure the protocol DIP/menu setting is set to **MDB** and Cashless payment is enabled under `PAYMENT SETTING`.*
+*Auf der SF01-Steuerplatine des G-Drink DM9 muss das Protokoll auf **MDB** eingestellt und die bargeldlose Zahlung unter `PAYMENT SETTING` aktiviert sein.*
 
-### 2. Enable Live FFWEB API Integration
+### 2. Live-Anbindung an FFWEB aktivieren
 ```ini
 FFWEB_MODE=http
 FFWEB_BASE_URL=https://api.ffweb.at
-FFWEB_API_KEY=your_station_api_token
+FFWEB_API_KEY=dein_api_token_der_wache
 FFWEB_MEMBER_LOOKUP_PATH=/api/v1/vending/members/{chip_uid}
 FFWEB_PRODUCTS_PATH=/api/v1/vending/products
 FFWEB_VEND_PATH=/api/v1/vending/consumptions
 ```
 
-### 3. Complete `.env` Configuration Reference
+### 3. Übersicht aller `.env`-Einstellungen
 
-| Variable | Default | Description |
+| Variable | Standard | Beschreibung |
 | :--- | :--- | :--- |
-| `HOST` / `PORT` | `0.0.0.0` / `8000` | HTTP server bind address and port |
-| `DB_PATH` | `data/vending.db` | Local SQLite database path (WAL mode) |
-| `ADMIN_API_TOKEN` | *(empty)* | Optional `X-Admin-Token` / Bearer token for admin write routes |
-| `MDB_MODE` | `simulator` | `simulator` (virtual DM9) or `qibixx` (live serial MDB hardware) |
-| `MDB_SERIAL_PORT` | `/dev/ttyACM0` | Serial device path for Qibixx MDB-USB / Pi HAT |
-| `RFID_MODE` | `auto` | `auto` (uses Linux `evdev` if present), `evdev`, or `simulator` |
-| `RFID_DEVICE_PATH` | *(empty)* | Optional explicit `/dev/input/by-id/...` path (auto-detected if empty) |
-| `OLED_MODE` | `auto` | `auto` (`ssd1306` on `/dev/i2c-1`), `ssd1306`, `sh1106`, or `disabled` |
-| `OLED_I2C_ADDRESS` | `0x3C` | Hex I2C address of the 0.96" OLED display |
-| `OLED_SCREENSAVER_SEC` | `90` | Seconds of idle time before dimming/blanking the OLED |
-| `BUTTONS_MODE` | `auto` | `auto` (uses `/dev/gpiochip0` via `libgpiod` v2), `simulator`, or `disabled` |
-| `BUTTON_PIN_BACK` | `17` | BCM GPIO pin for Button 1 (Left: Back / Cancel) |
-| `BUTTON_PIN_SELECT` | `27` | BCM GPIO pin for Button 2 (Middle: Select / OK) |
-| `BUTTON_PIN_NEXT` | `22` | BCM GPIO pin for Button 3 (Right: Next / Cycle) |
-| `BILLING_SELECTION_TIMEOUT_SEC` | `12` | Seconds before the OLED billing/event-list chooser times out |
-| `SESSION_TIMEOUT_SEC` | `30` | Seconds an authorized MDB credit session stays open on the DM9 |
-| `AWAITING_CHIP_TIMEOUT_SEC` | `15` | Seconds a selection-first drink request waits for an RFID chip scan |
-| `DISPENSE_TIMEOUT_SEC` | `25` | Max seconds to wait for the DM9 optical elevator sensor confirmation |
-| `ALLOW_UNMAPPED_SLOTS` | `false` | Whether unmapped DM9 slots can be vended using the machine's fallback price |
-| `FFWEB_MODE` | `mock` | `mock` (local SQLite members/balances) or `http` (live FFWEB REST API) |
+| `HOST` / `PORT` | `0.0.0.0` / `8000` | Adresse und Port des HTTP-Servers |
+| `DB_PATH` | `data/vending.db` | Pfad der lokalen SQLite-Datenbank (WAL-Modus) |
+| `ADMIN_API_TOKEN` | *(leer)* | Optionaler `X-Admin-Token` / Bearer-Token für schreibende Admin-Routen |
+| `MDB_MODE` | `simulator` | `simulator` (virtueller DM9) oder `qibixx` (echte serielle MDB-Hardware) |
+| `MDB_SERIAL_PORT` | `/dev/ttyACM0` | Serielles Gerät des Qibixx MDB-USB / Pi HAT |
+| `MDB_BAUDRATE` | `115200` | Baudrate der seriellen MDB-Schnittstelle |
+| `RFID_MODE` | `auto` | `auto` (Linux-`evdev`, falls vorhanden), `evdev` oder `simulator` |
+| `RFID_DEVICE_PATH` | *(leer)* | Optional expliziter Pfad `/dev/input/by-id/...` (sonst automatische Erkennung) |
+| `OLED_MODE` | `auto` | `auto` (`ssd1306` an `/dev/i2c-1`), `ssd1306`, `sh1106` oder `disabled` |
+| `OLED_I2C_PORT` | `1` | I2C-Bus-Nummer |
+| `OLED_I2C_ADDRESS` | `0x3C` | I2C-Adresse des OLED-Displays |
+| `OLED_SCREENSAVER_SEC` | `90` | Sekunden ohne Aktivität bis zum Abschalten des OLED |
+| `OLED_STARTUP_DIAG_SEC` | `6` | Anzeigedauer der Diagnose nach dem Start |
+| `BUTTONS_MODE` | `auto` | `auto` (`/dev/gpiochip0` über `libgpiod` v2), `simulator` oder `disabled` |
+| `BUTTONS_CHIP_PATH` | `/dev/gpiochip0` | GPIO-Chip für die Tasten |
+| `BUTTON_PIN_BACK` | `17` | BCM-GPIO für Taste 1 (links: Zurück / Abbruch) |
+| `BUTTON_PIN_SELECT` | `27` | BCM-GPIO für Taste 2 (Mitte: Auswahl / OK) |
+| `BUTTON_PIN_NEXT` | `22` | BCM-GPIO für Taste 3 (rechts: Weiter) |
+| `BUTTON_DEBOUNCE_MS` | `50` | Entprellzeit der Tasten in Millisekunden |
+| `BILLING_SELECTION_TIMEOUT_SEC` | `12` | Sekunden, bis die Auswahl Privat/Verrechnungsliste abläuft |
+| `SESSION_TIMEOUT_SEC` | `30` | Sekunden, die ein freigegebener MDB-Kredit am DM9 offen bleibt |
+| `AWAITING_CHIP_TIMEOUT_SEC` | `15` | Sekunden, die bei „Getränk zuerst“ auf einen Chip gewartet wird |
+| `DISPENSE_TIMEOUT_SEC` | `25` | Maximale Wartezeit auf die Bestätigung des Ausgabesensors |
+| `ALLOW_UNMAPPED_SLOTS` | `false` | Ob nicht zugeordnete Fächer zum Automatenpreis verkauft werden dürfen |
+| `FFWEB_MODE` | `mock` | `mock` (lokale Mitglieder/Guthaben in SQLite) oder `http` (echte FFWEB-REST-API) |
+| `FFWEB_TIMEOUT_SEC` | `4.0` | Timeout für FFWEB-Anfragen in Sekunden |
+| `SYNC_RETRY_INTERVAL_SEC` | `10` | Intervall für erneute Synchronisationsversuche |
 
 ---
 
-## 🗂️ Project Structure
+## 🗂️ Projektstruktur
 
 ```text
 .
 ├── app/
-│   ├── api/routes.py          # FastAPI REST endpoints & SSE real-time stream
-│   ├── buttons/               # Physical 3-button GPIO driver (libgpiod v2 + combo detection)
-│   ├── ffweb/                 # Mock & live HTTP FFWEB client + resilient background sync worker
-│   ├── mdb/                   # Qibixx MDB Cashless serial driver & Virtual G-Drink DM9 simulator
-│   ├── oled/                  # SSD1306/SH1106 128x64 I2C OLED renderer & early-boot splash
-│   ├── rfid/                  # Linux evdev USB HID reader with hot-plug & disconnect detection
-│   ├── static/index.html      # Station Admin Dashboard & Virtual Hardware Simulator UI
-│   ├── config.py              # Environment configuration loader
-│   ├── db.py                  # SQLite WAL persistence (slots, members, event lists, vend log)
-│   ├── events.py              # Async pub/sub event bus
-│   ├── main.py                # FastAPI application lifespan & service wiring
-│   └── state_machine.py       # Core vending state machine (Card-First, Selection-First, Event Lists)
+│   ├── api/routes.py          # FastAPI-REST-Endpunkte & SSE-Echtzeitstream
+│   ├── buttons/               # GPIO-Treiber für die 3 Tasten (libgpiod v2 + Kombinationserkennung)
+│   ├── ffweb/                 # Mock- & HTTP-FFWEB-Client + robuster Synchronisationsdienst
+│   ├── mdb/                   # Qibixx-MDB-Cashless-Treiber & virtueller G-Drink-DM9-Simulator
+│   ├── oled/                  # SSD1306/SH1106-OLED-Ansteuerung (128×64) & Boot-Splash
+│   ├── rfid/                  # evdev-USB-HID-Leser mit Hot-Plug- & Trennungserkennung
+│   ├── static/index.html      # Admin-Dashboard & virtueller Hardware-Simulator
+│   ├── config.py              # Laden der Konfiguration aus Umgebungsvariablen
+│   ├── db.py                  # SQLite-WAL-Speicher (Fächer, Mitglieder, Listen, Verkaufsprotokoll)
+│   ├── events.py              # Asynchroner Pub/Sub-Eventbus
+│   ├── main.py                # FastAPI-Lebenszyklus & Verdrahtung der Dienste
+│   └── state_machine.py       # Zentrale Zustandsmaschine (Chip zuerst, Getränk zuerst, Listen)
 ├── deploy/
-│   ├── getraenkeautomat-boot-oled.service  # Early-boot OLED splash systemd unit
-│   ├── getraenkeautomat.service            # Main controller systemd unit
-│   ├── install_pi.sh                       # One-command Raspberry Pi installer
-│   └── optimize_pi.sh                      # Raspberry Pi 1 fast-boot & 1000 MHz overclock script
-├── tests/                     # Automated pytest suite (vending flows, event lists, hardware edge cases)
-├── .env.example               # Example environment configuration
-├── pyproject.toml             # Pytest & project metadata
-└── requirements.txt           # Python dependencies
+│   ├── getraenkeautomat-boot-oled.service  # systemd-Unit für den OLED-Boot-Splash
+│   ├── getraenkeautomat.service            # systemd-Unit der Hauptsteuerung
+│   ├── install_pi.sh                       # Installer für den Raspberry Pi
+│   └── optimize_pi.sh                      # Schnellstart- & 1000-MHz-Skript für den Pi 1
+├── hardware/
+│   └── front_panel_pcb/       # KiCad-Projekt der Frontplatine (OLED + 3 Taster) inkl. Fertigungsdaten
+├── tests/                     # pytest-Tests (Verkaufsabläufe, Listen, Hardware-Sonderfälle)
+├── .env.example               # Beispielkonfiguration
+├── pyproject.toml             # Projekt- & pytest-Einstellungen
+└── requirements.txt           # Python-Abhängigkeiten
 ```
 
 ---
 
-## 📄 License
+## 📄 Lizenz
 
-Released under the [MIT License](LICENSE).
+Veröffentlicht unter der [MIT-Lizenz](LICENSE).
